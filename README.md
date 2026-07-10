@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Material BOX para Creality K1
 
 Este projeto reúne os arquivos JSON usados para configurar materiais da impressora Creality K1 no formato da pasta BOX.
@@ -21,3 +22,7 @@ Permitir organizar, revisar e adicionar materiais de marcas como eSUN e 3DFila d
 ## Observação
 
 Os arquivos foram montados para serem usados com o formato de materiais da impressora Creality K1.
+=======
+# Material-box-CFS-RFID-Creality-k1-
+Creality K1 material catalog with RFID support and local JSON editor
+>>>>>>> 767d11309e5e715a1a611b178e804c2451aa3c97
