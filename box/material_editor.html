@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Editor de materiais BOX</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f5f7fb; color: #222; }
+    h1 { margin-bottom: 8px; }
+    .panel { background: white; border-radius: 10px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+    label { display: block; margin-top: 8px; font-weight: 600; }
+    input, select, textarea { width: 100%; box-sizing: border-box; padding: 8px; margin-top: 4px; }
+    textarea { min-height: 90px; }
+    button { margin-top: 10px; padding: 8px 12px; cursor: pointer; }
+    .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 13px; }
+    th { background: #f0f2f7; }
+    tr:hover { background: #f9fbff; cursor: pointer; }
+    .muted { color: #666; font-size: 13px; }
+    .summary { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+    .chip { background: #eef4ff; padding: 4px 8px; border-radius: 999px; font-size: 12px; }
+    pre { background: #111; color: #eee; padding: 12px; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h1>Editor de materiais BOX</h1>
+  <p class="muted">Carregue os JSONs da pasta BOX e revise todos os materiais antes de editar ou adicionar novos.</p>
+
+  <div class="panel">
+    <div class="row">
+      <div>
+        <label>Arquivo material_option.json</label>
+        <input id="optionFile" type="file" accept="application/json" />
+      </div>
+      <div>
+        <label>Arquivo material_database.json</label>
+        <input id="dbFile" type="file" accept="application/json" />
+      </div>
+    </div>
+    <button onclick="loadFiles()">Carregar</button>
+    <button onclick="exportFiles()">Exportar JSON</button>
+    <button onclick="clearForm()">Novo material</button>
+  </div>
+
+  <div class="panel">
+    <h3>Materiais atuais</h3>
+    <div class="summary" id="summary"></div>
+    <table>
+      <thead>
+        <tr>
+          <th>Marca</th>
+          <th>Tipo</th>
+          <th>Nome</th>
+          <th>ID</th>
+          <th>Min/Max</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="materialTableBody"></tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h3>Editar / adicionar material</h3>
+    <div class="row">
+      <div>
+        <label>Selecionar material</label>
+        <select id="materialSelect" onchange="selectMaterialFromList()"></select>
+      </div>
+      <div>
+        <label>Marca</label>
+        <input id="brand" />
+      </div>
+      <div>
+        <label>Tipo</label>
+        <select id="materialType">
+          <option>PLA</option>
+          <option>PETG</option>
+          <option>ABS</option>
+          <option>TPU</option>
+          <option>PLA-CF</option>
+          <option>ASA</option>
+          <option>PA</option>
+          <option>PA-CF</option>
+          <option>PET-CF</option>
+          <option>PET</option>
+          <option>PC</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Nome do material</label>
+        <input id="name" />
+      </div>
+      <div>
+        <label>ID</label>
+        <input id="id" />
+      </div>
+      <div>
+        <label>Temperatura inicial</label>
+        <input id="nozzleTemp" type="number" />
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Temperatura mínima</label>
+        <input id="minTemp" type="number" />
+      </div>
+      <div>
+        <label>Temperatura máxima</label>
+        <input id="maxTemp" type="number" />
+      </div>
+      <div>
+        <label>Temperatura inicial da primeira camada</label>
+        <input id="initialLayerTemp" type="number" />
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Fluxo</label>
+        <input id="flowRatio" />
+      </div>
+      <div>
+        <label>Densidade</label>
+        <input id="density" />
+      </div>
+      <div>
+        <label>Custo</label>
+        <input id="cost" />
+      </div>
+    </div>
+    <button onclick="saveMaterial()">Salvar material</button>
+  </div>
+
+  <div class="panel">
+    <h3>Resumo JSON</h3>
+    <pre id="preview">Nenhum arquivo carregado.</pre>
+  </div>
+
+  <script>
+    let options = {};
+    let database = { result: { list: [] } };
+    let materialList = [];
+    let selectedId = null;
+
+    async function loadFiles() {
+      const optionFile = document.getElementById('optionFile').files[0];
+      const dbFile = document.getElementById('dbFile').files[0];
+      if (!optionFile || !dbFile) {
+        alert('Selecione os dois arquivos JSON.');
+        return;
+      }
+      options = JSON.parse(await optionFile.text());
+      database = JSON.parse(await dbFile.text());
+      materialList = (database.result?.list || []).map((item, index) => ({
+        index,
+        id: item.base?.id || `#${index + 1}`,
+        brand: item.base?.brand || item.kvParam?.filament_vendor || 'N/A',
+        type: item.kvParam?.filament_type || item.base?.meterialType || 'N/A',
+        name: item.base?.name || 'Sem nome',
+        minTemp: item.base?.minTemp || '',
+        maxTemp: item.base?.maxTemp || '',
+        entry: item
+      }));
+      renderMaterials();
+      renderPreview();
+      alert('Arquivos carregados com sucesso.');
+    }
+
+    function renderMaterials() {
+      const body = document.getElementById('materialTableBody');
+      const summary = document.getElementById('summary');
+      const select = document.getElementById('materialSelect');
+
+      body.innerHTML = '';
+      select.innerHTML = '<option value="">-- selecionar --</option>';
+
+      if (!materialList.length) {
+        body.innerHTML = '<tr><td colspan="6">Nenhum material carregado.</td></tr>';
+        summary.innerHTML = '';
+        return;
+      }
+
+      const byBrand = {};
+      materialList.forEach(item => {
+        byBrand[item.brand] = (byBrand[item.brand] || 0) + 1;
+      });
+
+      summary.innerHTML = Object.entries(byBrand).map(([brand, count]) => `<span class="chip">${brand}: ${count}</span>`).join('');
+
+      materialList.forEach(item => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${item.brand}</td>
+          <td>${item.type}</td>
+          <td>${item.name}</td>
+          <td>${item.id}</td>
+          <td>${item.minTemp}/${item.maxTemp}</td>
+          <td>${options[item.brand] && options[item.brand][item.type] ? 'em opções' : 'só catálogo'}</td>
+        `;
+        row.addEventListener('click', () => fillForm(item));
+        body.appendChild(row);
+
+        const option = document.createElement('option');
+        option.value = item.id;
+        option.textContent = `${item.brand} / ${item.type} / ${item.name}`;
+        select.appendChild(option);
+      });
+
+      if (selectedId) {
+        select.value = selectedId;
+      }
+    }
+
+    function fillForm(item) {
+      selectedId = item.id;
+      const entry = item.entry || {};
+      document.getElementById('brand').value = item.brand;
+      document.getElementById('materialType').value = item.type;
+      document.getElementById('name').value = item.name;
+      document.getElementById('id').value = item.id;
+      document.getElementById('minTemp').value = item.minTemp || '';
+      document.getElementById('maxTemp').value = item.maxTemp || '';
+      document.getElementById('nozzleTemp').value = entry.kvParam?.nozzle_temperature || '';
+      document.getElementById('initialLayerTemp').value = entry.kvParam?.nozzle_temperature_initial_layer || '';
+      document.getElementById('flowRatio').value = entry.kvParam?.filament_flow_ratio || '';
+      document.getElementById('density').value = entry.kvParam?.filament_density || '';
+      document.getElementById('cost').value = entry.kvParam?.filament_cost || '';
+      document.getElementById('materialSelect').value = item.id;
+      renderMaterials();
+    }
+
+    function selectMaterialFromList() {
+      const id = document.getElementById('materialSelect').value;
+      if (!id) return;
+      const found = materialList.find(item => item.id === id);
+      if (found) fillForm(found);
+    }
+
+    function clearForm() {
+      selectedId = null;
+      document.getElementById('materialSelect').value = '';
+      document.getElementById('brand').value = '';
+      document.getElementById('materialType').value = 'PLA';
+      document.getElementById('name').value = '';
+      document.getElementById('id').value = '';
+      document.getElementById('minTemp').value = '';
+      document.getElementById('maxTemp').value = '';
+      document.getElementById('nozzleTemp').value = '';
+      document.getElementById('initialLayerTemp').value = '';
+      document.getElementById('flowRatio').value = '';
+      document.getElementById('density').value = '';
+      document.getElementById('cost').value = '';
+    }
+
+    function saveMaterial() {
+      const brand = document.getElementById('brand').value.trim();
+      const materialType = document.getElementById('materialType').value;
+      const name = document.getElementById('name').value.trim();
+      const id = document.getElementById('id').value.trim();
+      const minTemp = document.getElementById('minTemp').value;
+      const maxTemp = document.getElementById('maxTemp').value;
+      const nozzleTemp = document.getElementById('nozzleTemp').value;
+      const initialLayerTemp = document.getElementById('initialLayerTemp').value;
+      const flowRatio = document.getElementById('flowRatio').value;
+      const density = document.getElementById('density').value;
+      const cost = document.getElementById('cost').value;
+
+      if (!brand || !name || !id) {
+        alert('Preencha marca, nome e ID antes de salvar.');
+        return;
+      }
+
+      if (!options[brand]) options[brand] = {};
+      options[brand][materialType] = name;
+
+      const list = database.result?.list || [];
+      const existingIndex = list.findIndex(item => item.base?.id === id);
+      const existingEntry = existingIndex >= 0 ? list[existingIndex] : {};
+
+      const entry = {
+        ...existingEntry,
+        engineVersion: '3.0.0',
+        printerIntName: 'CR-K1',
+        nozzleDiameter: ['0.4'],
+        kvParam: {
+          ...(existingEntry.kvParam || {}),
+          filament_type: materialType,
+          filament_vendor: brand,
+          nozzle_temperature: nozzleTemp || maxTemp || '',
+          nozzle_temperature_initial_layer: initialLayerTemp || nozzleTemp || '',
+          nozzle_temperature_range_low: minTemp || '',
+          nozzle_temperature_range_high: maxTemp || '',
+          filament_density: density || existingEntry.kvParam?.filament_density || '',
+          filament_flow_ratio: flowRatio || existingEntry.kvParam?.filament_flow_ratio || '',
+          filament_cost: cost || existingEntry.kvParam?.filament_cost || ''
+        },
+        base: {
+          ...(existingEntry.base || {}),
+          id,
+          brand,
+          name,
+          meterialType: materialType,
+          minTemp: minTemp ? Number(minTemp) : '',
+          maxTemp: maxTemp ? Number(maxTemp) : '',
+          density: density ? Number(density) : (existingEntry.base?.density || 1.24),
+          diameter: existingEntry.base?.diameter || '1.75',
+          costPerMeter: existingEntry.base?.costPerMeter || 0,
+          weightPerMeter: existingEntry.base?.weightPerMeter || 0,
+          rank: existingEntry.base?.rank || 10000,
+          colors: existingEntry.base?.colors || ['#ffffff'],
+          isSoluble: existingEntry.base?.isSoluble || false,
+          isSupport: existingEntry.base?.isSupport || false,
+          shrinkageRate: existingEntry.base?.shrinkageRate || 0,
+          softeningTemp: existingEntry.base?.softeningTemp || 0,
+          dryingTemp: existingEntry.base?.dryingTemp || 0,
+          dryingTime: existingEntry.base?.dryingTime || 0,
+          dryingTempLow: existingEntry.base?.dryingTempLow || 0,
+          dryingTempHigh: existingEntry.base?.dryingTempHigh || 0
+        }
+      };
+
+      if (existingIndex >= 0) {
+        list[existingIndex] = entry;
+      } else {
+        list.push(entry);
+      }
+
+      database.result.list = list;
+      database.result.count = list.length;
+      materialList = list.map((item, index) => ({
+        index,
+        id: item.base?.id || `#${index + 1}`,
+        brand: item.base?.brand || item.kvParam?.filament_vendor || 'N/A',
+        type: item.kvParam?.filament_type || item.base?.meterialType || 'N/A',
+        name: item.base?.name || 'Sem nome',
+        minTemp: item.base?.minTemp || '',
+        maxTemp: item.base?.maxTemp || '',
+        entry: item
+      }));
+      renderMaterials();
+      renderPreview();
+      alert('Material salvo no preview.');
+    }
+
+    function renderPreview() {
+      const preview = document.getElementById('preview');
+      preview.textContent = JSON.stringify({
+        options: options,
+        database: { count: database.result?.list?.length || 0, sample: database.result?.list?.slice(0, 3) || [] }
+      }, null, 2);
+    }
+
+    function exportFiles() {
+      if (!options || !database.result) {
+        alert('Carregue os arquivos primeiro.');
+        return;
+      }
+      const blobOption = new Blob([JSON.stringify(options, null, 2) + '\n'], { type: 'application/json' });
+      const blobDb = new Blob([JSON.stringify(database, null, 2) + '\n'], { type: 'application/json' });
+      const a1 = document.createElement('a');
+      a1.href = URL.createObjectURL(blobOption);
+      a1.download = 'material_option.json';
+      a1.click();
+      const a2 = document.createElement('a');
+      a2.href = URL.createObjectURL(blobDb);
+      a2.download = 'material_database.json';
+      a2.click();
+      alert('Arquivos exportados.');
+    }
+  </script>
+</body>
+</html>
