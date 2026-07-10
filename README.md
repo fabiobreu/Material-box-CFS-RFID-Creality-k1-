@@ -29,5 +29,5 @@ Certifique-se de substituir os arquivos existentes apenas se souber o que está 
 
 ## Aviso de responsabilidade
 
-As alterações neste repositório e na impressora são feitas por sua conta e risco. Não nos responsabilizamos por problemas, danos ou falhas causados por modificações de terceiros ou por mudanças não testadas.
+As alterações neste repositório e na impressora são feitas por sua conta e risco. Não nos responsabilizamos por problemas, danos ou falhas causados por modificações ou por mudanças não testadas.
 
