@@ -20,6 +20,8 @@
     .muted { color: #666; font-size: 13px; }
     .summary { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
     .chip { background: #eef4ff; padding: 4px 8px; border-radius: 999px; font-size: 12px; }
+    .warning { color: #b03; margin-top: 10px; }
+    .input-error { border-color: red !important; }
     pre { background: #111; color: #eee; padding: 12px; overflow: auto; }
   </style>
 </head>
@@ -41,6 +43,8 @@
     <button onclick="loadFiles()">Carregar</button>
     <button onclick="exportFiles()">Exportar JSON</button>
     <button onclick="clearForm()">Novo material</button>
+    <button onclick="cloneSelectedMaterial()">Duplicar material selecionado</button>
+    <div id="warning" class="warning"></div>
   </div>
 
   <div class="panel">
@@ -143,7 +147,9 @@
     let options = {};
     let database = { result: { list: [] } };
     let materialList = [];
-    let selectedId = null;
+    let selectedItem = null;
+    let editingExisting = false;
+    let draftEntry = null;
 
     async function loadFiles() {
       const optionFile = document.getElementById('optionFile').files[0];
@@ -154,6 +160,11 @@
       }
       options = JSON.parse(await optionFile.text());
       database = JSON.parse(await dbFile.text());
+      if (!validateOptionsStructure()) {
+        document.getElementById('warning').textContent = 'A estrutura de material_option.json parece diferente do esperado. Verifique o arquivo antes de exportar.';
+      } else {
+        document.getElementById('warning').textContent = '';
+      }
       materialList = (database.result?.list || []).map((item, index) => ({
         index,
         id: item.base?.id || `#${index + 1}`,
@@ -164,9 +175,18 @@
         maxTemp: item.base?.maxTemp || '',
         entry: item
       }));
+      selectedItem = null;
+      editingExisting = false;
+      draftEntry = null;
+      clearForm();
       renderMaterials();
       renderPreview();
       alert('Arquivos carregados com sucesso.');
+    }
+
+    function validateOptionsStructure() {
+      if (typeof options !== 'object' || options === null) return false;
+      return Object.values(options).every(brand => typeof brand === 'object' && brand !== null);
     }
 
     function renderMaterials() {
@@ -209,13 +229,15 @@
         select.appendChild(option);
       });
 
-      if (selectedId) {
-        select.value = selectedId;
+      if (selectedItem) {
+        select.value = selectedItem.id;
       }
     }
 
     function fillForm(item) {
-      selectedId = item.id;
+      selectedItem = item;
+      editingExisting = true;
+      draftEntry = null;
       const entry = item.entry || {};
       document.getElementById('brand').value = item.brand;
       document.getElementById('materialType').value = item.type;
@@ -229,7 +251,8 @@
       document.getElementById('density').value = entry.kvParam?.filament_density || '';
       document.getElementById('cost').value = entry.kvParam?.filament_cost || '';
       document.getElementById('materialSelect').value = item.id;
-      renderMaterials();
+      updateIdInputState();
+      clearIdValidation();
     }
 
     function selectMaterialFromList() {
@@ -240,7 +263,9 @@
     }
 
     function clearForm() {
-      selectedId = null;
+      selectedItem = null;
+      editingExisting = false;
+      draftEntry = null;
       document.getElementById('materialSelect').value = '';
       document.getElementById('brand').value = '';
       document.getElementById('materialType').value = 'PLA';
@@ -253,7 +278,71 @@
       document.getElementById('flowRatio').value = '';
       document.getElementById('density').value = '';
       document.getElementById('cost').value = '';
+      updateIdInputState();
+      clearIdValidation();
     }
+
+    function cloneSelectedMaterial() {
+      if (!selectedItem) {
+        alert('Selecione primeiro um material existente para clonar.');
+        return;
+      }
+      draftEntry = JSON.parse(JSON.stringify(selectedItem.entry));
+      selectedItem = null;
+      editingExisting = false;
+      document.getElementById('brand').value = draftEntry.base?.brand || '';
+      document.getElementById('materialType').value = draftEntry.base?.meterialType || draftEntry.kvParam?.filament_type || 'PLA';
+      document.getElementById('name').value = draftEntry.base?.name ? `${draftEntry.base.name} Copy` : '';
+      document.getElementById('id').value = '';
+      document.getElementById('minTemp').value = draftEntry.base?.minTemp || '';
+      document.getElementById('maxTemp').value = draftEntry.base?.maxTemp || '';
+      document.getElementById('nozzleTemp').value = draftEntry.kvParam?.nozzle_temperature || '';
+      document.getElementById('initialLayerTemp').value = draftEntry.kvParam?.nozzle_temperature_initial_layer || '';
+      document.getElementById('flowRatio').value = draftEntry.kvParam?.filament_flow_ratio || '';
+      document.getElementById('density').value = draftEntry.kvParam?.filament_density || '';
+      document.getElementById('cost').value = draftEntry.kvParam?.filament_cost || '';
+      document.getElementById('materialSelect').value = '';
+      updateIdInputState();
+      clearIdValidation();
+    }
+
+    function updateIdInputState() {
+      const idInput = document.getElementById('id');
+      idInput.disabled = editingExisting;
+      if (editingExisting) {
+        idInput.title = 'O ID não pode ser alterado ao editar um material existente.';
+      } else {
+        idInput.removeAttribute('title');
+      }
+    }
+
+    function clearIdValidation() {
+      const idInput = document.getElementById('id');
+      idInput.classList.remove('input-error');
+      idInput.removeAttribute('title');
+    }
+
+    function validateId() {
+      const rawId = document.getElementById('id').value.trim();
+      const idInput = document.getElementById('id');
+      if (!rawId) {
+        idInput.classList.remove('input-error');
+        return false;
+      }
+      const existing = materialList.find(item => item.id === rawId);
+      if (existing && (!editingExisting || (selectedItem && existing.id !== selectedItem.id))) {
+        idInput.classList.add('input-error');
+        idInput.title = 'Este ID já existe. Use outro valor.';
+        return false;
+      }
+      idInput.classList.remove('input-error');
+      if (!editingExisting) idInput.removeAttribute('title');
+      return true;
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('id').addEventListener('input', validateId);
+    });
 
     function saveMaterial() {
       const brand = document.getElementById('brand').value.trim();
@@ -272,13 +361,21 @@
         alert('Preencha marca, nome e ID antes de salvar.');
         return;
       }
+      if (!validateId()) {
+        alert('O ID informado já existe ou é inválido. Escolha outro ID.');
+        return;
+      }
+      if (!editingExisting && !draftEntry) {
+        alert('Clone primeiro um material existente antes de criar um novo.');
+        return;
+      }
 
       if (!options[brand]) options[brand] = {};
       options[brand][materialType] = name;
 
       const list = database.result?.list || [];
-      const existingIndex = list.findIndex(item => item.base?.id === id);
-      const existingEntry = existingIndex >= 0 ? list[existingIndex] : {};
+      const existingIndex = list.findIndex(item => item.base?.id === (editingExisting && selectedItem ? selectedItem.id : id));
+      const existingEntry = existingIndex >= 0 ? list[existingIndex] : (draftEntry ? JSON.parse(JSON.stringify(draftEntry)) : {});
 
       const entry = {
         ...existingEntry,
@@ -327,6 +424,9 @@
       } else {
         list.push(entry);
       }
+      selectedItem = null;
+      editingExisting = false;
+      draftEntry = null;
 
       database.result.list = list;
       database.result.count = list.length;
